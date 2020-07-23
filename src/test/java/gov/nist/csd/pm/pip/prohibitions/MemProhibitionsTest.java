@@ -43,8 +43,7 @@ class MemProhibitionsTest {
         assertEquals("sub", p123.getSubject());
         assertFalse(p123.isIntersection());
         assertEquals(new OperationSet("read"), p123.getOperations());
-        assertTrue(prohibition.getContainers().containsKey("1234"));
-        assertTrue(prohibition.getContainers().get("1234"));
+        assertTrue(prohibition.getContainers().contains(new ContainerCondition("1234", true)));
     }
 
     @Test
@@ -63,8 +62,7 @@ class MemProhibitionsTest {
         assertFalse(prohibition.isIntersection());
         assertEquals(prohibition.getOperations(), new OperationSet("read"));
 
-        assertTrue(prohibition.getContainers().containsKey("1234"));
-        assertTrue(prohibition.getContainers().get("1234"));
+        assertTrue(prohibition.getContainers().contains(new ContainerCondition("1234", true)));
     }
 
     @Test
@@ -85,8 +83,7 @@ class MemProhibitionsTest {
         assertEquals("prohibition1", prohibition.getName());
         assertEquals("newSubject", prohibition.getSubject());
         assertEquals(new OperationSet("new op"), prohibition.getOperations());
-        assertTrue(prohibition.getContainers().containsKey("newCont"));
-        assertFalse(prohibition.getContainers().get("newCont"));
+        assertTrue(prohibition.getContainers().contains(new ContainerCondition("1234", true)));
     }
 
     @Test

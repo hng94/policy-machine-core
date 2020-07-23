@@ -4,7 +4,7 @@ public class ContainerCondition {
     private String    name;
     private boolean complement;
 
-    ContainerCondition(String name, boolean complement) {
+    public ContainerCondition(String name, boolean complement) {
         this.name = name;
         this.complement = complement;
     }

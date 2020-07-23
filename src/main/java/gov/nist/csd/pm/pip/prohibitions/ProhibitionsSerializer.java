@@ -47,8 +47,8 @@ public class ProhibitionsSerializer {
         for(JsonProhibition jsonProhibition : jsonProhibitions.getProhibitions()) {
             Prohibition.Builder builder = new Prohibition.Builder(jsonProhibition.name, jsonProhibition.subject, new OperationSet(jsonProhibition.ops));
 
-            for (String contName : jsonProhibition.containers.keySet()) {
-                builder.addContainer(contName, jsonProhibition.containers.get(contName));
+            for (ContainerCondition container : jsonProhibition.containers) {
+                builder.addContainer(container.getName(), container.isComplement());
             }
 
             prohibitions.add(builder.build());
@@ -74,18 +74,18 @@ public class ProhibitionsSerializer {
         private String subject;
         private Set<String> ops;
         private boolean intersection;
-        private Map<String, Boolean> containers;
+        private Set<ContainerCondition> containers;
 
         JsonProhibition() {
 
         }
 
-        JsonProhibition(String name, String subject, Set<String> ops, boolean intersection, Map<String, Boolean> containers) {
+        JsonProhibition(String name, String subject, Set<String> ops, boolean intersection, Set<ContainerCondition> containers) {
             this.name = name;
             this.subject = subject;
             this.ops = ops;
             this.intersection = intersection;
-            this.containers = new HashMap<>();
+            this.containers = new HashSet<>();
             this.containers = containers;
         }
 
@@ -121,11 +121,11 @@ public class ProhibitionsSerializer {
             this.intersection = intersection;
         }
 
-        public Map<String, Boolean> getContainers() {
+        public Set<ContainerCondition> getContainers() {
             return containers;
         }
 
-        public void setContainers(Map<String, Boolean> containers) {
+        public void setContainers(Set<ContainerCondition> containers) {
             this.containers = containers;
         }
     }

@@ -1,14 +1,15 @@
 package gov.nist.csd.pm.pdp.audit;
 
 import gov.nist.csd.pm.operations.OperationSet;
-import gov.nist.csd.pm.pdp.audit.model.Explain;
-import gov.nist.csd.pm.pdp.audit.model.Path;
-import gov.nist.csd.pm.pdp.audit.model.PolicyClass;
+import gov.nist.csd.pm.pdp.audit.model.*;
 import gov.nist.csd.pm.exceptions.PMException;
 import gov.nist.csd.pm.pip.graph.Graph;
 import gov.nist.csd.pm.pip.graph.GraphSerializer;
 import gov.nist.csd.pm.pip.graph.MemGraph;
 import gov.nist.csd.pm.pip.graph.model.nodes.Node;
+import gov.nist.csd.pm.pip.prohibitions.MemProhibitions;
+import gov.nist.csd.pm.pip.prohibitions.Prohibitions;
+import gov.nist.csd.pm.pip.prohibitions.model.Prohibition;
 import org.junit.jupiter.api.Test;
 
 import java.util.*;
@@ -85,5 +86,37 @@ class PReviewAuditorTest {
         }
 
         return true;
+    }
+
+    @Test
+    void testProhibitionsAudit() throws PMException {
+        Graph graph = new MemGraph();
+        graph.createPolicyClass("pc1", null);
+        graph.createNode("oa1", OA, null, "pc1");
+        graph.createNode("ua1", UA, null, "pc1");
+        graph.createNode("o1", O, null, "oa1");
+        graph.createNode("u1", U, null, "ua1");
+
+        graph.associate("ua1", "oa1", new OperationSet("read", "write"));
+
+        Prohibitions prohibitions = new MemProhibitions();
+        prohibitions.add(new Prohibition.Builder("test", "ua1", new OperationSet("write"))
+                .addContainer("oa1", false)
+                .build());
+
+        PReviewAuditor auditor = new PReviewAuditor(graph, prohibitions, new OperationSet("read", "write"));
+        Explain explain = auditor.explain("u1", "o1");
+        ExplainedProhibitions explainProhibitions = explain.getProhibitions();
+        assertEquals(new OperationSet("write"), explainProhibitions.getOperations());
+
+        List<ExplainedProhibition> prohibitionsList = explainProhibitions.getProhibitions();
+        assertEquals(1, prohibitionsList.size());
+
+        ExplainedProhibition explainedProhibition = prohibitionsList.get(0);
+        Set<ExplainedContainerCondition> containerConditions = explainedProhibition.getContainerConditions();
+        assertEquals(1, containerConditions.size());
+
+        ExplainedContainerCondition ecc = containerConditions.iterator().next();
+        assertTrue(ecc.isSatisfied());
     }
 }

@@ -3,6 +3,7 @@ package gov.nist.csd.pm.pdp.decider;
 import gov.nist.csd.pm.exceptions.PMException;
 import gov.nist.csd.pm.operations.OperationSet;
 import gov.nist.csd.pm.operations.Operations;
+import gov.nist.csd.pm.pdp.decider.prohibitions.ProhibitionsDecider;
 import gov.nist.csd.pm.pip.graph.Graph;
 import gov.nist.csd.pm.pip.graph.dag.propagator.Propagator;
 import gov.nist.csd.pm.pip.graph.dag.searcher.BreadthFirstSearcher;
@@ -45,7 +46,7 @@ public class PReviewDecider implements Decider {
         }
 
         if (prohibitions == null) {
-            prohibitions = new MemProhibitions();
+            throw new IllegalArgumentException("provided prohibitions cannot be null");
         }
 
         this.graph = graph;
@@ -217,46 +218,7 @@ public class PReviewDecider implements Decider {
         Set<String> reachedTargets = targetCtx.getReachedTargets();
 
         for(Prohibition p : prohibitions) {
-            boolean inter = p.isIntersection();
-            Map<String, Boolean> containers = p.getContainers();
-
-            boolean addOps = false;
-            for (String contName : containers.keySet()) {
-                if (target.equals(contName)) {
-                    addOps = false;
-                    if (inter) {
-                        // if the target is a container and the prohibition evaluates the intersection
-                        // the whole prohibition is not satisfied
-                        break;
-                    } else {
-                        // continue checking the remaining conditions
-                        continue;
-                    }
-                }
-
-                boolean isComplement = containers.get(contName);
-                if (!isComplement && reachedTargets.contains(contName) || isComplement && !reachedTargets.contains(contName)) {
-                    addOps = true;
-
-                    // if the prohibition is not intersection, one satisfied container condition means
-                    // the prohibition is satisfied
-                    if (!inter) {
-                        break;
-                    }
-                } else {
-                    // since the intersection requires the target to satisfy each node condition in the prohibition
-                    // if one is not satisfied then the whole is not satisfied
-                    addOps = false;
-
-                    // if the prohibition is the intersection, one unsatisfied container condition means the whole
-                    // prohibition is not satisfied
-                    if (inter) {
-                        break;
-                    }
-                }
-            }
-
-            if (addOps) {
+            if (ProhibitionsDecider.areContainerConditionsSatisfied(p, reachedTargets, target)) {
                 denied.addAll(p.getOperations());
             }
         }

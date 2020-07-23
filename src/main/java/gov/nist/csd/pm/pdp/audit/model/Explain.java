@@ -5,15 +5,18 @@ import java.util.*;
 public class Explain {
     private Set<String>              permissions;
     private Map<String, PolicyClass> policyClasses;
+    private ExplainedProhibitions    prohibitions;
 
     public Explain() {
         permissions = new HashSet<>();
         policyClasses = new HashMap<>();
+        prohibitions = new ExplainedProhibitions();
     }
 
-    public Explain(Set<String> permissions, Map<String, PolicyClass> policyClasses) {
+    public Explain(Set<String> permissions, Map<String, PolicyClass> policyClasses, ExplainedProhibitions prohibitions) {
         this.permissions = permissions;
         this.policyClasses = policyClasses;
+        this.prohibitions = prohibitions;
     }
 
     public Set<String> getPermissions() {
@@ -30,6 +33,14 @@ public class Explain {
 
     public void setPolicyClasses(Map<String, PolicyClass> policyClasses) {
         this.policyClasses = policyClasses;
+    }
+
+    public ExplainedProhibitions getProhibitions() {
+        return prohibitions;
+    }
+
+    public void setProhibitions(ExplainedProhibitions prohibitions) {
+        this.prohibitions = prohibitions;
     }
 
     public String toString() {

@@ -571,7 +571,6 @@ class PReviewDeciderTest {
                 .addContainer(oa4.getName(), true)
                 .addContainer(oa1.getName(), false)
                 .build();
-        prohibition.setOperations(new OperationSet("read", "write"));
         prohibitions.add(prohibition);
 
         PReviewDecider decider = new PReviewDecider(graph, prohibitions, RWE);

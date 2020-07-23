@@ -10,6 +10,7 @@ import gov.nist.csd.pm.pip.prohibitions.model.Prohibition;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static gov.nist.csd.pm.operations.Operations.*;
 
@@ -21,7 +22,7 @@ public class ProhibitionsGuard extends Guard {
 
     private void check(UserContext userCtx, Prohibition prohibition, String permission) throws PMException {
         String subject = prohibition.getSubject();
-        Map<String, Boolean> containers = prohibition.getContainers();
+        Set<ContainerCondition> containers = prohibition.getContainers();
 
         // check prohibition subject
         if (pap.getGraphAdmin().exists(subject)) {
@@ -31,8 +32,8 @@ public class ProhibitionsGuard extends Guard {
         }
 
         // check each container in prohibition
-        for (String container : containers.keySet()) {
-            if (!hasPermissions(userCtx, container, permission)) {
+        for (ContainerCondition container : containers) {
+            if (!hasPermissions(userCtx, container.getName(), permission)) {
                 throw new PMAuthorizationException(String.format("unauthorized permission %s on %s", permission, container));
             }
         }

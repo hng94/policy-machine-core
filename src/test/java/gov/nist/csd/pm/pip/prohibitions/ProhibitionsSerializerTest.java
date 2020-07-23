@@ -38,7 +38,6 @@ class ProhibitionsSerializerTest {
         assertFalse(prohibition.isIntersection());
         assertEquals(new OperationSet("read"), prohibition.getOperations());
 
-        assertTrue(prohibition.getContainers().containsKey("1234"));
-        assertTrue(prohibition.getContainers().get("1234"));
+        assertTrue(prohibition.getContainers().contains(new ContainerCondition("1234", true)));
     }
 }

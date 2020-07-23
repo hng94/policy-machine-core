@@ -96,10 +96,8 @@ public class MemProhibitions implements Prohibitions {
             throw new IllegalArgumentException("cannot update a prohibition with a null name");
         }
 
-        // set the name of the object to the provided prohibition name
-        prohibition.setName(prohibitionName);
         // delete the prohibition
-        delete(prohibition.getName());
+        delete(prohibitionName);
         // add the updated prohibition
         add(prohibition);
     }

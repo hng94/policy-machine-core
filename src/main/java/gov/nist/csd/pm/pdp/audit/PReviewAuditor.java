@@ -1,22 +1,27 @@
 package gov.nist.csd.pm.pdp.audit;
 
 import gov.nist.csd.pm.operations.OperationSet;
-import gov.nist.csd.pm.pdp.audit.model.Explain;
-import gov.nist.csd.pm.pdp.audit.model.Path;
-import gov.nist.csd.pm.pdp.audit.model.PolicyClass;
+import gov.nist.csd.pm.pdp.audit.model.*;
 import gov.nist.csd.pm.exceptions.PMException;
+import gov.nist.csd.pm.pdp.decider.prohibitions.ProhibitionsDecider;
 import gov.nist.csd.pm.pip.graph.Graph;
 import gov.nist.csd.pm.pip.graph.dag.propagator.Propagator;
 import gov.nist.csd.pm.pip.graph.dag.searcher.DepthFirstSearcher;
 import gov.nist.csd.pm.pip.graph.dag.searcher.Direction;
 import gov.nist.csd.pm.pip.graph.dag.visitor.Visitor;
 import gov.nist.csd.pm.pip.graph.model.nodes.Node;
+import gov.nist.csd.pm.pip.prohibitions.MemProhibitions;
+import gov.nist.csd.pm.pip.prohibitions.Prohibitions;
+import gov.nist.csd.pm.pip.prohibitions.model.ContainerCondition;
+import gov.nist.csd.pm.pip.prohibitions.model.Prohibition;
 
 import javax.annotation.processing.SupportedSourceVersion;
 import java.util.*;
 
 import static gov.nist.csd.pm.operations.Operations.*;
 import static gov.nist.csd.pm.operations.Operations.ALL_RESOURCE_OPS;
+import static gov.nist.csd.pm.pdp.decider.prohibitions.ProhibitionsDecider.areContainerConditionsSatisfied;
+import static gov.nist.csd.pm.pdp.decider.prohibitions.ProhibitionsDecider.isContainerConditionSatisfied;
 import static gov.nist.csd.pm.pip.graph.model.nodes.NodeType.*;
 
 public class PReviewAuditor implements Auditor {
@@ -24,25 +29,172 @@ public class PReviewAuditor implements Auditor {
     private static final String ALL_OPERATIONS = "*";
 
     private Graph graph;
+    private Prohibitions prohibitions;
     private OperationSet resourceOps;
 
     public PReviewAuditor(Graph graph, OperationSet resourceOps) {
         this.graph = graph;
+        this.prohibitions = new MemProhibitions();
+        this.resourceOps = resourceOps;
+    }
+
+    public PReviewAuditor(Graph graph, Prohibitions prohibitions, OperationSet resourceOps) {
+        this.graph = graph;
+        this.prohibitions = prohibitions;
+        if (this.prohibitions == null) {
+            throw new IllegalArgumentException("provided prohibitions cannot be null");
+        }
+
         this.resourceOps = resourceOps;
     }
 
     @Override
-    public Explain explain(String userID, String target) throws PMException {
-        Node userNode = graph.getNode(userID);
+    public Explain explain(String user, String target) throws PMException {
+        Node userNode = graph.getNode(user);
         Node targetNode = graph.getNode(target);
 
-        List<EdgePath> userPaths = dfs(userNode);
-        List<EdgePath> targetPaths = dfs(targetNode);
+        UserContext userCtx = explainUser(userNode);
+        TargetContext targetCtx = explainTarget(targetNode);
 
-        Map<String, PolicyClass> resolvedPaths = resolvePaths(userPaths, targetPaths, target);
+        Map<String, PolicyClass> resolvedPaths = resolvePaths(userCtx, targetCtx, target);
         Set<String> perms = resolvePermissions(resolvedPaths);
 
-        return new Explain(perms, resolvedPaths);
+        ExplainedProhibitions prohibitions = resolveProhibitions(userCtx, targetCtx, target);
+
+        return new Explain(perms, resolvedPaths, prohibitions);
+    }
+
+    private UserContext explainUser(Node node) throws PMException {
+        Map<String, List<EdgePath>> propPaths = new HashMap<>();
+        List<Prohibition> foundProhibitions = new ArrayList<>();
+
+        Visitor visitor = (Node v) -> {
+            visit(v, propPaths);
+
+            // collect the prohibitions for the current node
+            foundProhibitions.addAll(prohibitions.getProhibitionsFor(v.getName()));
+        };
+
+        Propagator propagator = (Node parent, Node child) -> {
+            propagate(node, child, parent, propPaths);
+        };
+
+        DepthFirstSearcher searcher = new DepthFirstSearcher(graph);
+        searcher.traverse(node, propagator, visitor, Direction.PARENTS);
+        return new UserContext(propPaths.get(node.getName()), foundProhibitions);
+    }
+
+    static class UserContext {
+        private List<EdgePath> paths;
+        private List<Prohibition> prohibitions;
+
+        public UserContext(List<EdgePath> paths, List<Prohibition> prohibitions) {
+            this.paths = paths;
+            this.prohibitions = prohibitions;
+        }
+
+        public List<EdgePath> getPaths() {
+            return paths;
+        }
+
+        public List<Prohibition> getProhibitions() {
+            return prohibitions;
+        }
+    }
+
+    private TargetContext explainTarget(Node node) throws PMException {
+        Map<String, List<EdgePath>> propPaths = new HashMap<>();
+        Set<String> reachedTargets = new HashSet<>();
+
+        Visitor visitor = (Node v) -> {
+            visit(v, propPaths);
+
+            reachedTargets.add(v.getName());
+        };
+
+        Propagator propagator = (Node parent, Node child) -> {
+            propagate(node, child, parent, propPaths);
+        };
+
+        DepthFirstSearcher searcher = new DepthFirstSearcher(graph);
+        searcher.traverse(node, propagator, visitor, Direction.PARENTS);
+        return new TargetContext(propPaths.get(node.getName()), reachedTargets);
+    }
+
+    static class TargetContext {
+        private List<EdgePath> paths;
+        private Set<String> reached;
+
+        public TargetContext(List<EdgePath> paths, Set<String> reached) {
+            this.paths = paths;
+            this.reached = reached;
+        }
+
+        public List<EdgePath> getPaths() {
+            return paths;
+        }
+
+        public Set<String> getReached() {
+            return reached;
+        }
+    }
+
+    private void visit(Node node, Map<String, List<EdgePath>> propPaths) throws PMException {
+        List<EdgePath> nodePaths = new ArrayList<>();
+
+        if (node.getType() == PC) {
+            return;
+        }
+
+        for(String parent : graph.getParents(node.getName())) {
+            EdgePath.Edge edge = new EdgePath.Edge(node, graph.getNode(parent), null);
+            List<EdgePath> parentPaths = propPaths.getOrDefault(parent, new ArrayList<>());
+            if(parentPaths.isEmpty()) {
+                EdgePath path = new EdgePath();
+                path.addEdge(edge);
+                nodePaths.add(0, path);
+            } else {
+                for(EdgePath p : parentPaths) {
+                    EdgePath parentPath = new EdgePath();
+                    for(EdgePath.Edge e : p.getEdges()) {
+                        parentPath.addEdge(new EdgePath.Edge(e.getSource(), e.getTarget(), e.getOps()));
+                    }
+
+                    parentPath.getEdges().add(0, edge);
+                    nodePaths.add(parentPath);
+                }
+            }
+        }
+
+        Map<String, OperationSet> assocs = graph.getSourceAssociations(node.getName());
+        for(String target : assocs.keySet()) {
+            OperationSet ops = assocs.get(target);
+            Node targetNode = graph.getNode(target);
+            EdgePath path = new EdgePath();
+            path.addEdge(new EdgePath.Edge(node, targetNode, ops));
+            nodePaths.add(path);
+        }
+
+        propPaths.put(node.getName(), nodePaths);
+    }
+
+    private void propagate(Node node, Node child, Node parent, Map<String, List<EdgePath>> propagatedPaths) {
+        List<EdgePath> childPaths = propagatedPaths.computeIfAbsent(child.getName(), k -> new ArrayList<>());
+        List<EdgePath> parentPaths = propagatedPaths.getOrDefault(parent.getName(), new ArrayList<>());
+
+        for(EdgePath p : parentPaths) {
+            EdgePath path = new EdgePath();
+            for(EdgePath.Edge edge : p.getEdges()) {
+                path.addEdge(new EdgePath.Edge(edge.getSource(), edge.getTarget(), edge.getOps()));
+            }
+
+            EdgePath newPath = new EdgePath();
+            newPath.getEdges().addAll(path.getEdges());
+            EdgePath.Edge edge = new EdgePath.Edge(child, parent, null);
+            newPath.getEdges().add(0, edge);
+            childPaths.add(newPath);
+            propagatedPaths.put(child.getName(), childPaths);
+        }
     }
 
     private Set<String> resolvePermissions(Map<String, PolicyClass> paths) {
@@ -113,13 +265,16 @@ public class PReviewAuditor implements Auditor {
      * exists in a target path. That same target path must also end in a policy class. If the path does not end in a policy
      * class the target path is ignored.
      *
-     * @param userPaths the set of paths starting with a user.
-     * @param targetPaths the set of paths starting with a target node.
+     * @param userCtx the set of paths starting with a user.
+     * @param targetCtx the set of paths starting with a target node.
      * @param target the name of the target node.
      * @return the set of paths from a user to a target node (through an association) for each policy class in the system.
      * @throws PMException if there is an exception traversing the graph
      */
-    private Map<String, PolicyClass> resolvePaths(List<EdgePath> userPaths, List<EdgePath> targetPaths, String target) throws PMException {
+    private Map<String, PolicyClass> resolvePaths(UserContext userCtx, TargetContext targetCtx, String target) throws PMException {
+        List<EdgePath> userPaths = userCtx.getPaths();
+        List<EdgePath> targetPaths = targetCtx.getPaths();
+
         Map<String, PolicyClass> results = new HashMap<>();
 
         for (EdgePath targetPath : targetPaths) {
@@ -261,82 +416,33 @@ public class PReviewAuditor implements Auditor {
         ops.removeIf(op -> !resourceOps.contains(op) && !ADMIN_OPS.contains(op));
     }
 
-    private List<EdgePath> dfs(Node start) throws PMException {
-        DepthFirstSearcher searcher = new DepthFirstSearcher(graph);
+    private ExplainedProhibitions resolveProhibitions(UserContext userCtx, TargetContext targetCtx, String target) {
+        OperationSet deniedOps = new OperationSet();
+        List<ExplainedProhibition> explainedProhibitions = new ArrayList<>();
+        List<Prohibition> prohibitions = userCtx.getProhibitions();
+        Set<String> reached = targetCtx.getReached();
 
-        final List<EdgePath> paths = new ArrayList<>();
-        final Map<String, List<EdgePath>> propPaths = new HashMap<>();
+        for (Prohibition prohibition : prohibitions) {
+            Set<ContainerCondition> containers = prohibition.getContainers();
+            Set<ExplainedContainerCondition> explainedContainerConditions = new HashSet<>();
+            for (ContainerCondition containerCondition : containers) {
+                String name = containerCondition.getName();
+                boolean complement = containerCondition.isComplement();
+                boolean satisfied = isContainerConditionSatisfied(target, prohibition.isIntersection(),
+                        containerCondition, reached.contains(name));
 
-        Visitor visitor = node -> {
-            List<EdgePath> nodePaths = new ArrayList<>();
-
-            for(String parent : graph.getParents(node.getName())) {
-                EdgePath.Edge edge = new EdgePath.Edge(node, graph.getNode(parent), null);
-                List<EdgePath> parentPaths = propPaths.get(parent);
-                if(parentPaths.isEmpty()) {
-                    EdgePath path = new EdgePath();
-                    path.addEdge(edge);
-                    nodePaths.add(0, path);
-                } else {
-                    for(EdgePath p : parentPaths) {
-                        EdgePath parentPath = new EdgePath();
-                        for(EdgePath.Edge e : p.getEdges()) {
-                            parentPath.addEdge(new EdgePath.Edge(e.getSource(), e.getTarget(), e.getOps()));
-                        }
-
-                        parentPath.getEdges().add(0, edge);
-                        nodePaths.add(parentPath);
-                    }
-                }
+                explainedContainerConditions.add(new ExplainedContainerCondition(name, complement, satisfied));
             }
 
-            Map<String, OperationSet> assocs = graph.getSourceAssociations(node.getName());
-            for(String target : assocs.keySet()) {
-                OperationSet ops = assocs.get(target);
-                Node targetNode = graph.getNode(target);
-                EdgePath path = new EdgePath();
-                path.addEdge(new EdgePath.Edge(node, targetNode, ops));
-                nodePaths.add(path);
+            if (areContainerConditionsSatisfied(prohibition, reached, target)) {
+                deniedOps.addAll(prohibition.getOperations());
+
+                explainedProhibitions.add(new ExplainedProhibition(prohibition.getSubject(), prohibition.getOperations(),
+                        prohibition.isIntersection(), explainedContainerConditions));
             }
+        }
 
-            // if the node being visited is the start node, add all the found nodePaths
-            // TODO there might be a more efficient way of doing this
-            // we don't need the if for users, only when the target is an OA, so it might have something to do with
-            // leafs vs non leafs
-            if (node.getName().equals(start.getName())) {
-                paths.clear();
-                paths.addAll(nodePaths);
-            } else {
-                propPaths.put(node.getName(), nodePaths);
-            }
-        };
-
-        Propagator propagator = (parentNode, childNode) -> {
-            List<EdgePath> childPaths = propPaths.computeIfAbsent(childNode.getName(), k -> new ArrayList<>());
-            List<EdgePath> parentPaths = propPaths.get(parentNode.getName());
-
-            for(EdgePath p : parentPaths) {
-                EdgePath path = new EdgePath();
-                for(EdgePath.Edge edge : p.getEdges()) {
-                    path.addEdge(new EdgePath.Edge(edge.getSource(), edge.getTarget(), edge.getOps()));
-                }
-
-                EdgePath newPath = new EdgePath();
-                newPath.getEdges().addAll(path.getEdges());
-                EdgePath.Edge edge = new EdgePath.Edge(childNode, parentNode, null);
-                newPath.getEdges().add(0, edge);
-                childPaths.add(newPath);
-                propPaths.put(childNode.getName(), childPaths);
-            }
-
-            if (childNode.getName().equals(start.getName())) {
-                paths.clear();
-                paths.addAll(propPaths.get(childNode.getName()));
-            }
-        };
-
-        searcher.traverse(start, propagator, visitor, Direction.PARENTS);
-        return paths;
+        return new ExplainedProhibitions(deniedOps, explainedProhibitions);
     }
 
     private static class ResolvedPath {

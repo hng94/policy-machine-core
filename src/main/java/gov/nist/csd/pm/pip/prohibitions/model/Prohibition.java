@@ -12,11 +12,11 @@ public class Prohibition {
 
     private String       name;
     private String      subject;
-    private Map<String, Boolean>   containers;
+    private Set<ContainerCondition>   containers;
     private OperationSet operations;
     private boolean      intersection;
 
-    private Prohibition(String name, String subject, Map<String, Boolean> containers, OperationSet operations, boolean intersection) {
+    private Prohibition(String name, String subject, Set<ContainerCondition> containers, OperationSet operations, boolean intersection) {
         if (subject == null) {
             throw new IllegalArgumentException("Prohibition subject cannot be null");
         }
@@ -25,7 +25,7 @@ public class Prohibition {
         this.subject = subject;
 
         if (containers == null) {
-            this.containers = new HashMap<>();
+            this.containers = new HashSet<>();
         } else {
             this.containers = containers;
         }
@@ -43,44 +43,20 @@ public class Prohibition {
         return subject;
     }
 
-    public void setSubject(String subject) {
-        this.subject = subject;
-    }
-
-    public Map<String, Boolean> getContainers() {
+    public Set<ContainerCondition> getContainers() {
         return containers;
-    }
-
-    public void addContainer(String name, boolean complement) {
-        containers.put(name, complement);
-    }
-
-    public void removeContainerCondition(String name) {
-        containers.remove(name);
     }
 
     public String getName() {
         return name;
     }
 
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public Set<String> getOperations() {
+    public OperationSet getOperations() {
         return operations;
-    }
-
-    public void setOperations(OperationSet operations) {
-        this.operations = operations;
     }
 
     public boolean isIntersection() {
         return intersection;
-    }
-
-    public void setIntersection(boolean intersection) {
-        this.intersection = intersection;
     }
 
     public boolean equals(Object o) {
@@ -100,20 +76,20 @@ public class Prohibition {
 
         private String       name;
         private String      subject;
-        private Map<String, Boolean>   containers;
+        private Set<ContainerCondition>   containers;
         private OperationSet operations;
         private boolean      intersection;
 
         public Builder(String name, String subject, OperationSet operations) {
             this.name = name;
             this.subject = subject;
-            this.containers = new HashMap<>();
+            this.containers = new HashSet<>();
             this.operations = operations;
             this.intersection = false;
         }
 
         public Builder addContainer(String container, boolean complement) {
-            containers.put(container, complement);
+            containers.add(new ContainerCondition(container, complement));
             return this;
         }
 

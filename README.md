@@ -306,9 +306,10 @@ Custom events can be done in four steps:
 
 1. Extend the [EventPattern](src/main/java/gov/nist/csd/pm/pip/obligations/model/EventPattern.java) class. 
 2. Implement the [EventParser](src/main/java/gov/nist/csd/pm/pip/obligations/evr/EventParser.java) interface in order to parse the yaml of the custom event.
-3. Extend the [EventContext](src/main/java/gov/nist/csd/pm/epp/events/EventContext.java) class and override the
+3. Pass the EventParser implementation to the `EVRParser` constructor.  
+4. Extend the [EventContext](src/main/java/gov/nist/csd/pm/epp/events/EventContext.java) class and override the
 `matchesPattern` method.
-4. Call `epp.processEvent` passing the custom EventContext.
+5. Call `epp.processEvent` passing the custom EventContext.
 
 ##### Example
 
@@ -383,7 +384,13 @@ Custom events can be done in four steps:
         ...
     ```
 
-3. Extend `EventContext`. For this example, the test event pattern will match if the given string is contained in the pattern's list of strings.
+3. Pass the custom event parser to the `EVRParser` constructor.
+
+    ```java
+    EVRParser parser = new EVRParser(Arrays.asList(new TestEventParser()), null); // the null parameter is for custom responses
+    ```
+
+4. Extend `EventContext`. For this example, the test event pattern will match if the given string is contained in the pattern's list of strings.
 
     ```java
     public class TestEventContext extends EventContext {
@@ -410,7 +417,7 @@ Custom events can be done in four steps:
     }
     ```
 
-4. Processing the custom event.
+5. Processing the custom event.
 
     ```java
     epp.processEvent(new TestEventContext(new UserContext("aUser"), "theString"));
@@ -422,6 +429,7 @@ Custom responses can be done in four steps:
 1. Extend the [ResponsePattern](src/main/java/gov/nist/csd/pm/pip/obligations/model/ResponsePattern.java) class and override 
 the `apply` method.
 2. Implement the [ResponseParser](src/main/java/gov/nist/csd/pm/pip/obligations/evr/ResponseParser.java) interface in order to parse the yaml of the custom response.
+3. Pass the ResponseParser implementation to the `EVRParser` constructor.
 
 #### Example
 
@@ -458,3 +466,9 @@ the `apply` method.
        }
    }
    ```
+   
+3. Pass the custom response parser to the `EVRParser` constructor.
+
+    ```java
+    EVRParser parser = new EVRParser(null, Arrays.asList(new TestResponseParser())); // the null parameter is for custom events
+    ```

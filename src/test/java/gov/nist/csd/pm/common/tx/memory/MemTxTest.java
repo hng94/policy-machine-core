@@ -126,11 +126,6 @@ class MemTxTest {
         new Thread(()-> {
             try {
                 pap.runTx((g, p , o) -> {
-                    try {
-                        Thread.sleep(4000);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
                     g.createPolicyClass("pc1", null);
                 });
             } catch (PMException e) {
@@ -140,7 +135,8 @@ class MemTxTest {
         Thread.sleep(500);
         new Thread(()-> {
             try {
-                pdp.withUser(new UserContext("super")).runTx((g, p , o) -> {
+                pdp.withUser(new UserContext("super"))
+                        .runTx((g, p , o) -> {
                     g.deleteNode("pc1");
                 });
             } catch (PMException e) {
